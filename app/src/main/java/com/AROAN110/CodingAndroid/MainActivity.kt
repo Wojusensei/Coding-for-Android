@@ -91,6 +91,10 @@ class MainActivity : Activity() {
     @Volatile
     private var installFlowRunning = false
 
+    /** Activity 已销毁（onDestroy 之后）：忽略一切异步回调，避免销毁后重新拉起会话。 */
+    @Volatile
+    private var destroyed = false
+
     /** boot() 是否已启动过安装引导：第二次起一律静默，杜绝「未安装」刷屏。 */
     private var bootInstallStarted = false
 
@@ -117,15 +121,15 @@ class MainActivity : Activity() {
 
     private val sessionListener = object : TerminalSession.Listener {
         override fun onSessionOutput(session: TerminalSession, text: String) {
-            mainHandler.post { handleOutput(session, text) }
+            mainHandler.post { if (!destroyed) handleOutput(session, text) }
         }
 
         override fun onSessionFinished(session: TerminalSession, exitCode: Int) {
-            mainHandler.post { handleFinished(session, exitCode) }
+            mainHandler.post { if (!destroyed) handleFinished(session, exitCode) }
         }
 
         override fun onSessionError(session: TerminalSession, message: String) {
-            mainHandler.post { handleError(session, message) }
+            mainHandler.post { if (!destroyed) handleError(session, message) }
         }
     }
 
@@ -147,6 +151,8 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // ★ 先标记销毁：此后任何会话回调 / 安装收尾都不允许再拉起新会话
+        destroyed = true
         // ★ 强制释放后台安装线程在 promptForUserMirror() 中的等待，避免线程死锁
         mirrorLatch?.countDown()
         mirrorLatch = null
@@ -259,6 +265,7 @@ class MainActivity : Activity() {
                 installFlowRunning = false
                 installing = false
                 mainHandler.post {
+                    if (destroyed) return@post
                     if (ok) {
                         terminalView.appendOutput("[CFA] 容器就绪，正在启动…\n\n")
                         startAlpine()
