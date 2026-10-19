@@ -156,8 +156,9 @@ class MainActivity : Activity() {
         // ★ 强制释放后台安装线程在 promptForUserMirror() 中的等待，避免线程死锁
         mirrorLatch?.countDown()
         mirrorLatch = null
-        // ★ 强制打断仍在 AlpineInstaller.install() 阶段的后台线程，避免向已销毁视图投递输出
-        AlpineInstaller.abortInstallation()
+        // ★ 仅当安装闭环确实在跑时才打断：无条件调用会把全局 aborted 永久置位，
+        //   之后的 pmc install（execInAlpine）会因这个陈旧标志直接失败
+        if (installFlowRunning) AlpineInstaller.abortInstallation()
         httpServer?.stop()
         suSession?.destroy()
         hostSession?.destroy()
@@ -262,6 +263,8 @@ class MainActivity : Activity() {
                 }
                 ok = AlpineInstaller.isInstalled(this)
             } finally {
+                // 闭环结束：清除可能由 onDestroy 置位的打断标志，避免污染后续 pmc install
+                AlpineInstaller.clearAbortFlag()
                 installFlowRunning = false
                 installing = false
                 mainHandler.post {

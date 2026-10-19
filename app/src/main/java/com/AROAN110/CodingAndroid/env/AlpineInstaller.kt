@@ -74,6 +74,15 @@ object AlpineInstaller {
         if (p != null) killProcessTree(p)
     }
 
+    /**
+     * 清除打断标志（安装闭环结束时调用）。
+     * onDestroy 等场景置位 aborted 后，若闭环没走到 cleanupAfterAbort()，
+     * 标志会永久残留，导致后续 pmc install 的 execInAlpine 误判为「已中断」。
+     */
+    fun clearAbortFlag() {
+        aborted = false
+    }
+
     /** 打断检查点：在耗时步骤前调用。 */
     private fun checkAbort() {
         if (aborted) throw InstallationInterruptedException()
